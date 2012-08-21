@@ -21,21 +21,19 @@ db = connect("localhost:31102/test");
 printjson (rs.status());
 print ("DONE PRINTING STATUS");
 
-var master = r.getMaster();
 var members = config.members.map(function(elem) { return elem.host; });
 var shardName = "addshard4/"+members.join(",");
 var invalidShardName = "addshard4/foobar";
 
+shardName = shardName.split(",")[0];
 print("adding shard "+shardName);
 
 // First try adding shard with the correct replica set name but incorrect hostname
 // This will make sure that the metadata for this replica set name is cleaned up
 // so that the set can be added correctly when it has the proper hostnames.
-assert.throws(function() {s.adminCommand({"addshard" : invalidShardName});});
-
-
-
-var result = s.adminCommand({"addshard" : shardName});
+assert.throws(function() {s.adminCommand({"addshard" : invalidShardName});})
+//var result = s.adminCommand({"addshard" : shardName});
+var result = s.adminCommand({"addshard" : "addshard4/Leonardos-MacBook-Air.local:31100"});
 
 printjson(result);
 assert.eq(result, true);

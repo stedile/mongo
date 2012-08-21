@@ -18,6 +18,8 @@
 
 #include "pch.h"
 
+#include <string>
+
 #include <boost/thread.hpp>
 
 #include "mongo/db/dbmessage.h"
@@ -25,11 +27,13 @@
 #include "mongo/util/net/message.h"
 #include "mongo/util/stacktrace.h"
 
+
 using namespace mongo;
 using namespace std;
 
 int port = 0;
 int delay = 0;
+bool isMongos = false;
 string destUri;
 void cleanup( int sig );
 
@@ -52,29 +56,82 @@ public:
                     break;
                 }
                 sleepmillis( delay );
-
                 int oldId = m.header()->id;
                 if ( m.operation() == dbQuery || m.operation() == dbMsg || m.operation() == dbGetMore ) {
                     bool exhaust = false;
                     if ( m.operation() == dbQuery ) {
                         DbMessage d( m );
-                        QueryMessage q( d );
+                        QueryMessage q( d );                  
                         exhaust = q.queryOptions & QueryOption_Exhaust;
                     }
                     Message response;
+                    Message * new_response;
                     dest.port().call( m, response );
-
-                    // nothing to reply with?
                     if ( response.empty() ) cleanup(0);
+                    mongo::QueryResult* r = (mongo::QueryResult*)response.singleData();
+                    mongo::BSONObj o( r->data() );
+                    cout << "RESULT: " << o << "\n";
+                    if (m.operation() == dbQuery){
+                        DbMessage d( m );
+                        QueryMessage q( d );
+                        cout << "OPERATION: " << q.query.toString() << "\n";
+                        if (!isMongos && q.query.toString() == "{ ismaster: 1 }"){
+                            BSONObjBuilder newQuery;
+                            // Copy all elements of the original query object, but change the hosts field                                                         
+                            BSONObjIterator it(o);
+                            while ( it.more() ) {
+                                BSONElement e = it.next();
+                                if ( mongoutils::str::equals( e.fieldName(), "hosts" ) ){
+                                    BSONArrayBuilder newElement (newQuery.subarrayStart("hosts"));
+                                    BSONObjIterator it2 = BSONArray (e.embeddedObject());
+                                    while ( it2.more() ){
+                                        BSONElement e2 = it2.next();
+                                        string s = e2.toString();
+                                        int p = s.find("\"");
+                                        s = s.substr(p+1, s.length()-p-2);
+                                        //string s = "localhost:12345";
+                                        newElement.append(s);
+                                    }
+                                    newElement.done();
+                                }
+                                else
+                                    newQuery.append(e);
+                            }
+                            BSONObj o2 = newQuery.obj();
+                            cout << "OLD OBJ:" << o << "\n";
+                            cout << "NEW OBJ:" << o2 << "\n"; 
+                            //now we need to copy back to the QueryResult
+                            BufBuilder b( 32768 );
+                            b.skip( sizeof( QueryResult ) );
+                            {
+                                b.appendBuf( o2.objdata() , o2.objsize() );
+                            }
+                            QueryResult *qr = (QueryResult*)b.buf();
+                            qr->_resultFlags() = r->_resultFlags();
+                            qr->len = b.len();
+                            qr->setOperation( opReply );
+                            qr->cursorId = r->cursorId;
+                            qr->startingFrom = r->startingFrom;
+                            qr->nReturned = r->nReturned;
+                            cout << "OLD RESPONSE IS:" << response.toString() << "\n";
+                            new_response = new Message();
+                            new_response->setData( qr , true );
+                            cout << "NEW RESPONSE IS:" << new_response->toString();                            
+                        }
+                        new_response = new Message(response);
+                        if (!isMongos && q.query.toString() == "{ replSetGetStatus: 1 }"){
+                            cout << "REQUESTED REPLSETGETSTATUS\n";
+                        }
+                    }
 
-                    mp_.reply( m, response, oldId );
+                    mp_.reply( m, new_response, oldId );
                     while ( exhaust ) {
-                        MsgData *header = response.header();
+                        MsgData *header = new_response.header();
                         QueryResult *qr = (QueryResult *) header;
                         if ( qr->cursorId ) {
-                            response.reset();
-                            dest.port().recv( response );
-                            mp_.reply( m, response ); // m argument is ignored anyway
+                            new_response.reset();
+                            dest.port().recv( new_response );
+                            mp_.reply( m, new_response ); // m argument is ignored anyway
                         }
                         else {
                             exhaust = false;
@@ -151,7 +208,7 @@ void check( bool b ) {
 
 int main( int argc, char **argv ) {
     static StaticObserver staticObserver;
-
+    cout << "THIS IS A TEST\n";
     setupSignals();
 
     check( argc == 5 || argc == 7 );
@@ -166,6 +223,9 @@ int main( int argc, char **argv ) {
         }
         else if ( strcmp( argv[ i ], "--delay" ) == 0 ) {
             delay = strtol( argv[ ++i ], 0, 10 );
+        }
+        else if ( strcmp( argv[ i ], "--mongos" ) == 0 ) {
+            isMongos = true;
         }
         else {
             check( false );
