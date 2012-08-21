@@ -70,17 +70,20 @@ public:
                     if ( response.empty() ) cleanup(0);
                     mongo::QueryResult* r = (mongo::QueryResult*)response.singleData();
                     mongo::BSONObj o( r->data() );
-                    cout << "RESULT: " << o << "\n";
                     if (m.operation() == dbQuery){
                         DbMessage d( m );
                         QueryMessage q( d );
-                        cout << "OPERATION: " << q.query.toString() << "\n";
+                        cout << "OPERATION: " << q.query.toString() << "\t";
+                        cout << "RESULT: " << o << "\n";
+
+                        //IS MASTER
                         if (!isMongos && q.query.toString() == "{ ismaster: 1 }"){
                             BSONObjBuilder newQuery;
-                            // Copy all elements of the original query object, but change the hosts field                                                         
+                            // Copy all elements of the original query object, but change some fields                                                         
                             BSONObjIterator it(o);
                             while ( it.more() ) {
                                 BSONElement e = it.next();
+                                
                                 if ( mongoutils::str::equals( e.fieldName(), "hosts" ) ){
                                     BSONArrayBuilder newElement (newQuery.subarrayStart("hosts"));
                                     BSONObjIterator it2 = BSONArray (e.embeddedObject());
@@ -94,12 +97,36 @@ public:
                                     }
                                     newElement.done();
                                 }
+                                
+                                else if ( mongoutils::str::equals( e.fieldName(), "passives" ) ){
+                                    BSONArrayBuilder newElement (newQuery.subarrayStart("passives"));
+                                    BSONObjIterator it2 = BSONArray (e.embeddedObject());
+                                    while ( it2.more() ){
+                                        BSONElement e2 = it2.next();
+                                        string s = e2.toString();
+                                        int p = s.find("\"");
+                                        s = s.substr(p+1, s.length()-p-2);
+                                        //string s = "localhost:12345";
+                                        newElement.append(s);
+                                    }
+                                    newElement.done();
+                                }
+                                
+                                else if ( mongoutils::str::equals( e.fieldName(), "me" ) ){
+                                    string s = e.toString();
+                                    int p = s.find("\"");
+                                    s = s.substr(p+1, s.length()-p-2);
+                                    //cout << "OBJ STRING is " << s << "\n";
+                                    //string s = "localhost:12345";
+                                    newQuery.append(e.fieldName(), s);
+                                }
+                                
                                 else
                                     newQuery.append(e);
                             }
                             BSONObj o2 = newQuery.obj();
-                            cout << "OLD OBJ:" << o << "\n";
-                            cout << "NEW OBJ:" << o2 << "\n"; 
+                            //cout << "OLD OBJ:" << o << "\n";
+                            //cout << "NEW OBJ:" << o2 << "\n"; 
                             //now we need to copy back to the QueryResult
                             BufBuilder b( 32768 );
                             b.skip( sizeof( QueryResult ) );
@@ -118,13 +145,75 @@ public:
                             new_response.setData( qr , true );
                             //cout << "NEW RESPONSE IS:" << new_response.toString() << "\n";                            
                         }
+                        
+                        //REPLSET GET STATUS
+                        else if (!isMongos && q.query.toString() == "{ replSetGetStatus: 1 }"){
+                            BSONObjBuilder newQuery;
+                            // Copy all elements of the original query object, but change the hosts field                                                         
+                            BSONObjIterator it(o);
+                            while ( it.more() ) {
+                                BSONElement e = it.next(); //this is one of the objects in the dictionary
+                                
+                                if ( mongoutils::str::equals( e.fieldName(), "members" ) ){
+                                    
+                                    BSONArrayBuilder newElement (newQuery.subarrayStart("members")); //MEMBERS ARRAY
+                                    BSONObjIterator it2 = BSONArray (e.embeddedObject()); //this iterates through the members array
+                                    
+                                    while ( it2.more() ){
+                                        BSONElement e2 = it2.next(); //this is a member, a bson object
+                                        
+                                        BSONObjBuilder newElement2; //this will hold the new member
+                                        BSONObjIterator it3 = BSONObj (e2.embeddedObject()); //this iterates through the bson member object
+                                        
+                                        while (it3.more() ){
+                                            BSONElement e3 = it3.next(); //field of a member                                            
+                                            if (str::equals( e3.fieldName(), "name")){
+                                                string s = e3.toString();
+                                                int p = s.find("\"");
+                                                s = s.substr(p+1, s.length()-p-2);
+                                                //string s = "localhost:12345";
+                                                cout << "STRING is " << s << "\n";
+                                                newElement2.append(e3.fieldName(), s);
+                                            }
+                                            else
+                                                newElement2.append(e3);
+                                        }
+                                        
+                                        newElement.append(e2);
+
+                                    }
+                                    newElement.done();
+                                }
+                                                            
+                                else
+                                    newQuery.append(e);
+                            }
+                            
+                            BSONObj o2 = newQuery.obj();
+                            cout << "OLD OBJ:" << o << "\n";
+                            cout << "NEW OBJ:" << o2 << "\n"; 
+                            //now we need to copy back to the QueryResult
+                            BufBuilder b( 32768 );
+                            b.skip( sizeof( QueryResult ) );
+                            {
+                                b.appendBuf( o2.objdata() , o2.objsize() );
+                            }
+                            QueryResult *qr = (QueryResult*)b.buf();
+                            qr->_resultFlags() = r->_resultFlags();
+                            qr->len = b.len();
+                            qr->setOperation( opReply );
+                            qr->cursorId = r->cursorId;
+                            qr->startingFrom = r->startingFrom;
+                            qr->nReturned = r->nReturned;
+                            b.decouple();
+                            cout << "OLD RESPONSE IS:" << response.toString() << "\n";
+                            new_response.setData( qr , true );
+                            cout << "NEW RESPONSE IS:" << new_response.toString() << "\n"; 
+                        }
+                        
                         else{
                             new_response = response;
                             cout << "RESPONSE IS:" << new_response.toString() << "\n";
-                        }
-                        //new_response = response;
-                        if (!isMongos && q.query.toString() == "{ replSetGetStatus: 1 }"){
-                            cout << "REQUESTED REPLSETGETSTATUS\n";
                         }
                     }
 
