@@ -65,8 +65,7 @@ public:
                         exhaust = q.queryOptions & QueryOption_Exhaust;
                     }
                     Message response;
-                    scoped_ptr<Message> new_response; 
-                    //Message * new_response;
+                    Message new_response;
                     dest.port().call( m, response );
                     if ( response.empty() ) cleanup(0);
                     mongo::QueryResult* r = (mongo::QueryResult*)response.singleData();
@@ -114,28 +113,29 @@ public:
                             qr->cursorId = r->cursorId;
                             qr->startingFrom = r->startingFrom;
                             qr->nReturned = r->nReturned;
-                            cout << "OLD RESPONSE IS:" << response.toString() << "\n";
-                            new_response.reset(new Message());
-                            new_response->setData( qr , true );
-                            cout << "NEW RESPONSE IS:" << new_response->toString() << "\n";                            
+                            b.decouple();
+                            //cout << "OLD RESPONSE IS:" << response.toString() << "\n";
+                            new_response.setData( qr , true );
+                            //cout << "NEW RESPONSE IS:" << new_response.toString() << "\n";                            
                         }
                         else{
-                            new_response.reset(new Message(response));
-                            cout << "RESPONSE IS:" << new_response->toString() << "\n";
+                            new_response = response;
+                            cout << "RESPONSE IS:" << new_response.toString() << "\n";
                         }
+                        //new_response = response;
                         if (!isMongos && q.query.toString() == "{ replSetGetStatus: 1 }"){
                             cout << "REQUESTED REPLSETGETSTATUS\n";
                         }
                     }
 
-                    mp_.reply( m, *new_response, oldId );
+                    mp_.reply( m, new_response, oldId );
                     while ( exhaust ) {
-                        MsgData *header = new_response->header();
+                        MsgData *header = new_response.header();
                         QueryResult *qr = (QueryResult *) header;
                         if ( qr->cursorId ) {
-                            new_response->reset();
-                            dest.port().recv( *new_response );
-                            mp_.reply( m, *new_response ); // m argument is ignored anyway
+                            new_response.reset();
+                            dest.port().recv( new_response );
+                            mp_.reply( m, new_response ); // m argument is ignored anyway
                         }
                         else {
                             exhaust = false;
