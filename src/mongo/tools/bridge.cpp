@@ -36,6 +36,7 @@ int delay = 0;
 bool isMongos = false;
 string destUri;
 void cleanup( int sig );
+std::map<std::string, string> alias;
 
 class Forwarder {
 public:
@@ -77,7 +78,7 @@ public:
                         cout << "RESULT: " << o << "\n";
 
                         //IS MASTER
-                        if (!isMongos && q.query.toString() == "{ ismaster: 1 }"){
+                        if (isMongos && q.query.toString() == "{ ismaster: 1 }"){
                             BSONObjBuilder newQuery;
                             // Copy all elements of the original query object, but change some fields                                                         
                             BSONObjIterator it(o);
@@ -147,7 +148,7 @@ public:
                         }
                         
                         //REPLSET GET STATUS
-                        else if (!isMongos && q.query.toString() == "{ replSetGetStatus: 1 }"){
+                        else if (isMongos && q.query.toString() == "{ replSetGetStatus: 1 }"){
                             BSONObjBuilder newQuery;
                             // Copy all elements of the original query object, but change the hosts field                                                         
                             BSONObjIterator it(o);
@@ -305,7 +306,7 @@ int main( int argc, char **argv ) {
     setupSignals();
 
     check( argc == 5 || argc == 7 );
-
+    string alias_list;
     for( int i = 1; i < argc; ++i ) {
         check( i % 2 != 0 );
         if ( strcmp( argv[ i ], "--port" ) == 0 ) {
@@ -319,12 +320,36 @@ int main( int argc, char **argv ) {
         }
         else if ( strcmp( argv[ i ], "--mongos" ) == 0 ) {
             isMongos = true;
+            alias_list = argv[ ++ i];
         }
         else {
             check( false );
         }
     }
+    
+    //Parse the mongos argument
+    //cout << "GOING INTO PARSING MONGOS\n";
+    //cout << "Alias list is" << alias_list << "\n";
+    while (true) {
+        size_t pos = alias_list.find('=');
+        if (pos == string::npos){
+            cout << "Format for mongos argument is off. Use --help for more info on correct format\n";
+            return 0;
+        }
+        size_t pos2 = alias_list.find(',');
+        string original_host = alias_list.substr(0, pos);
+        string new_host = alias_list.substr(pos+1, pos2 - pos - 1);
+        //cout << "ORI HOST:" << original_host << "\n";
+        //cout << "NEW HOST:" << new_host << "\n";
+        alias[original_host]=new_host;
+        if (pos2 == string::npos)
+            break;
+        alias_list = alias_list.substr(pos2 + 1);
+    }
+    
+    
     check( port != 0 && !destUri.empty() );
+
 
     listener.reset( new MyListener( port ) );
     listener->initAndListen();
