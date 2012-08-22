@@ -76,9 +76,12 @@ public:
                         QueryMessage q( d );
                         cout << "OPERATION: " << q.query.toString() << "\t";
                         cout << "RESULT: " << o << "\n";
-
+                        string s = q.query.firstElement().toString();
+                        cout << "REDUCED OPERATION: " << s << "\n";
+                        int num = s.find(":");
+                        s = s.substr(0, num);
                         //IS MASTER
-                        if (isMongos && q.query.toString() == "{ ismaster: 1 }"){
+                        if (isMongos && s == "ismaster"){
                             BSONObjBuilder newQuery;
                             // Copy all elements of the original query object, but change some fields                                                         
                             BSONObjIterator it(o);
@@ -93,6 +96,8 @@ public:
                                         string s = e2.toString();
                                         int p = s.find("\"");
                                         s = s.substr(p+1, s.length()-p-2);
+                                        if (alias.find(s) != alias.end()) // match
+                                            s = alias[s];
                                         //string s = "localhost:12345";
                                         newElement.append(s);
                                     }
@@ -107,6 +112,8 @@ public:
                                         string s = e2.toString();
                                         int p = s.find("\"");
                                         s = s.substr(p+1, s.length()-p-2);
+                                        if (alias.find(s) != alias.end()) // match
+                                            s = alias[s];
                                         //string s = "localhost:12345";
                                         newElement.append(s);
                                     }
@@ -117,6 +124,8 @@ public:
                                     string s = e.toString();
                                     int p = s.find("\"");
                                     s = s.substr(p+1, s.length()-p-2);
+                                    if (alias.find(s) != alias.end()) // match
+                                        s = alias[s];
                                     //cout << "OBJ STRING is " << s << "\n";
                                     //string s = "localhost:12345";
                                     newQuery.append(e.fieldName(), s);
@@ -148,7 +157,8 @@ public:
                         }
                         
                         //REPLSET GET STATUS
-                        else if (isMongos && q.query.toString() == "{ replSetGetStatus: 1 }"){
+                        else if (isMongos && s == "replSetGetStatus"){
+                            cout << "In REPLSETGETSTATUS\n";
                             BSONObjBuilder newQuery;
                             // Copy all elements of the original query object, but change the hosts field                                                         
                             BSONObjIterator it(o);
@@ -172,7 +182,8 @@ public:
                                                 string s = e3.toString();
                                                 int p = s.find("\"");
                                                 s = s.substr(p+1, s.length()-p-2);
-                                                //string s = "localhost:12345";
+                                                if (alias.find(s) != alias.end()) // match
+                                                    s = alias[s];
                                                 cout << "STRING is " << s << "\n";
                                                 newElement2.append(e3.fieldName(), s);
                                             }
@@ -180,7 +191,7 @@ public:
                                                 newElement2.append(e3);
                                         }
                                         
-                                        newElement.append(e2);
+                                        newElement.append(newElement2.obj());
 
                                     }
                                     newElement.done();
@@ -330,7 +341,7 @@ int main( int argc, char **argv ) {
     //Parse the mongos argument
     //cout << "GOING INTO PARSING MONGOS\n";
     //cout << "Alias list is" << alias_list << "\n";
-    while (true) {
+    while (isMongos) {
         size_t pos = alias_list.find('=');
         if (pos == string::npos){
             cout << "Format for mongos argument is off. Use --help for more info on correct format\n";
@@ -339,14 +350,13 @@ int main( int argc, char **argv ) {
         size_t pos2 = alias_list.find(',');
         string original_host = alias_list.substr(0, pos);
         string new_host = alias_list.substr(pos+1, pos2 - pos - 1);
-        //cout << "ORI HOST:" << original_host << "\n";
-        //cout << "NEW HOST:" << new_host << "\n";
+        cout << "ORI HOST:" << original_host << "\n";
+        cout << "NEW HOST:" << new_host << "\n";
         alias[original_host]=new_host;
         if (pos2 == string::npos)
             break;
         alias_list = alias_list.substr(pos2 + 1);
     }
-    
     
     check( port != 0 && !destUri.empty() );
 
