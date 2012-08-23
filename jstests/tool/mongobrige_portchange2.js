@@ -7,10 +7,11 @@ r.initiate(config);
 //Wait for replica set to be fully initialized - could take some time
 //to pre-allocate files on slow systems
 r.awaitReplication();
-
-str = "Leonardos-MacBook-Air.local:31100=localhost:31105,";
-str += "Leonardos-MacBook-Air.local:31101=localhost:31106,";
-str += "Leonardos-MacBook-Air.local:31102=localhost:31107"
+db = connect("localhost:31100/test");
+host = rs.status().members[0].name.split(':')[0];
+str = host + ":31100=localhost:31105,";
+str += host + ":31101=localhost:31106,";
+str += host + ":31102=localhost:31107";
 //start a bridge to secondary, test ReplSetGetStatus(memebers.name)
 // and isMaster (primary, me, hosts, passive, arbiter)
 startMongoProgram("mongobridge", "--port", "29001", "--dest", "localhost:31101", 

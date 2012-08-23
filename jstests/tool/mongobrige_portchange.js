@@ -9,8 +9,10 @@ r.initiate(config);
 r.awaitReplication();
 
 //start a bridge to primary, test ReplSetGetStatus (members.name) and isMaster (primary, me, hosts)
+db = connect("localhost:31100/test");
+host = rs.status().members[0].name.split(':')[0];
 startMongoProgram("mongobridge", "--port", "29000", "--dest", "localhost:31100", "--mongos", 
-"Leonardos-MacBook-Air.local:31100=localhost:31105");
+host + ":31100=localhost:31105");
 db = connect("localhost:29000/test");
 count = 0;
 count2 = 0;
