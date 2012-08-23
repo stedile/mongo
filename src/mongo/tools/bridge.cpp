@@ -66,7 +66,7 @@ public:
                         exhaust = q.queryOptions & QueryOption_Exhaust;
                     }
                     Message response;
-                    Message new_response;
+                    Message new_response; //
                     dest.port().call( m, response );
                     if ( response.empty() ) cleanup(0);
                     mongo::QueryResult* r = (mongo::QueryResult*)response.singleData();
@@ -74,16 +74,12 @@ public:
                     if (m.operation() == dbQuery){
                         DbMessage d( m );
                         QueryMessage q( d );
-                        cout << "OPERATION: " << q.query.toString() << "\t";
-                        cout << "RESULT: " << o << "\n";
                         string s = q.query.firstElement().toString();
-                        cout << "REDUCED OPERATION: " << s << "\n";
                         int num = s.find(":");
                         s = s.substr(0, num);
-                        //IS MASTER
-                        if (isMongos && s == "ismaster"){
+                        if (isMongos && s == "isMaster"){
                             BSONObjBuilder newQuery;
-                            // Copy all elements of the original query object, but change some fields                                                         
+                            // Copy all elements of the original query object, changing some fields                                                         
                             BSONObjIterator it(o);
                             while ( it.more() ) {
                                 BSONElement e = it.next();
@@ -91,14 +87,31 @@ public:
                                 if ( mongoutils::str::equals( e.fieldName(), "hosts" ) ){
                                     BSONArrayBuilder newElement (newQuery.subarrayStart("hosts"));
                                     BSONObjIterator it2 = BSONArray (e.embeddedObject());
+                                    //iterates thru hosts
+                                    while ( it2.more() ){
+                                        BSONElement e2 = it2.next();
+                                        //parse text
+                                        string s = e2.toString();
+                                        int p = s.find("\"");
+                                        s = s.substr(p+1, s.length()-p-2);
+                                        if (alias.find(s) != alias.end()){ //matches dic
+                                            s = alias[s];
+                                        }
+                                        newElement.append(s);
+                                    }
+                                    newElement.done();
+                                }
+                                
+                                else if ( mongoutils::str::equals( e.fieldName(), "arbiters" ) ){
+                                    BSONArrayBuilder newElement (newQuery.subarrayStart("arbiters"));
+                                    BSONObjIterator it2 = BSONArray (e.embeddedObject());
                                     while ( it2.more() ){
                                         BSONElement e2 = it2.next();
                                         string s = e2.toString();
                                         int p = s.find("\"");
                                         s = s.substr(p+1, s.length()-p-2);
-                                        if (alias.find(s) != alias.end()) // match
+                                        if (alias.find(s) != alias.end())
                                             s = alias[s];
-                                        //string s = "localhost:12345";
                                         newElement.append(s);
                                     }
                                     newElement.done();
@@ -112,9 +125,8 @@ public:
                                         string s = e2.toString();
                                         int p = s.find("\"");
                                         s = s.substr(p+1, s.length()-p-2);
-                                        if (alias.find(s) != alias.end()) // match
+                                        if (alias.find(s) != alias.end())
                                             s = alias[s];
-                                        //string s = "localhost:12345";
                                         newElement.append(s);
                                     }
                                     newElement.done();
@@ -124,10 +136,17 @@ public:
                                     string s = e.toString();
                                     int p = s.find("\"");
                                     s = s.substr(p+1, s.length()-p-2);
-                                    if (alias.find(s) != alias.end()) // match
+                                    if (alias.find(s) != alias.end())
                                         s = alias[s];
-                                    //cout << "OBJ STRING is " << s << "\n";
-                                    //string s = "localhost:12345";
+                                    newQuery.append(e.fieldName(), s);
+                                }
+                                
+                                else if ( mongoutils::str::equals( e.fieldName(), "primary" ) ){
+                                    string s = e.toString();
+                                    int p = s.find("\"");
+                                    s = s.substr(p+1, s.length()-p-2);
+                                    if (alias.find(s) != alias.end())
+                                        s = alias[s];
                                     newQuery.append(e.fieldName(), s);
                                 }
                                 
@@ -135,8 +154,6 @@ public:
                                     newQuery.append(e);
                             }
                             BSONObj o2 = newQuery.obj();
-                            //cout << "OLD OBJ:" << o << "\n";
-                            //cout << "NEW OBJ:" << o2 << "\n"; 
                             //now we need to copy back to the QueryResult
                             BufBuilder b( 32768 );
                             b.skip( sizeof( QueryResult ) );
@@ -151,30 +168,27 @@ public:
                             qr->startingFrom = r->startingFrom;
                             qr->nReturned = r->nReturned;
                             b.decouple();
-                            //cout << "OLD RESPONSE IS:" << response.toString() << "\n";
                             new_response.setData( qr , true );
-                            //cout << "NEW RESPONSE IS:" << new_response.toString() << "\n";                            
                         }
                         
-                        //REPLSET GET STATUS
                         else if (isMongos && s == "replSetGetStatus"){
-                            cout << "In REPLSETGETSTATUS\n";
                             BSONObjBuilder newQuery;
-                            // Copy all elements of the original query object, but change the hosts field                                                         
                             BSONObjIterator it(o);
                             while ( it.more() ) {
-                                BSONElement e = it.next(); //this is one of the objects in the dictionary
+                                BSONElement e = it.next();
                                 
                                 if ( mongoutils::str::equals( e.fieldName(), "members" ) ){
                                     
-                                    BSONArrayBuilder newElement (newQuery.subarrayStart("members")); //MEMBERS ARRAY
-                                    BSONObjIterator it2 = BSONArray (e.embeddedObject()); //this iterates through the members array
+                                    BSONArrayBuilder newElement (newQuery.subarrayStart("members"));
+                                    BSONObjIterator it2 = BSONArray (e.embeddedObject());
+                                    //this iterates through the members
                                     
                                     while ( it2.more() ){
-                                        BSONElement e2 = it2.next(); //this is a member, a bson object
+                                        BSONElement e2 = it2.next(); 
+                                        //this is a member, a bson object
                                         
-                                        BSONObjBuilder newElement2; //this will hold the new member
-                                        BSONObjIterator it3 = BSONObj (e2.embeddedObject()); //this iterates through the bson member object
+                                        BSONObjBuilder newElement2; // will hold the new member
+                                        BSONObjIterator it3 = BSONObj (e2.embeddedObject()); 
                                         
                                         while (it3.more() ){
                                             BSONElement e3 = it3.next(); //field of a member                                            
@@ -182,9 +196,8 @@ public:
                                                 string s = e3.toString();
                                                 int p = s.find("\"");
                                                 s = s.substr(p+1, s.length()-p-2);
-                                                if (alias.find(s) != alias.end()) // match
+                                                if (alias.find(s) != alias.end())
                                                     s = alias[s];
-                                                cout << "STRING is " << s << "\n";
                                                 newElement2.append(e3.fieldName(), s);
                                             }
                                             else
@@ -196,14 +209,11 @@ public:
                                     }
                                     newElement.done();
                                 }
-                                                            
                                 else
                                     newQuery.append(e);
                             }
                             
                             BSONObj o2 = newQuery.obj();
-                            cout << "OLD OBJ:" << o << "\n";
-                            cout << "NEW OBJ:" << o2 << "\n"; 
                             //now we need to copy back to the QueryResult
                             BufBuilder b( 32768 );
                             b.skip( sizeof( QueryResult ) );
@@ -218,14 +228,11 @@ public:
                             qr->startingFrom = r->startingFrom;
                             qr->nReturned = r->nReturned;
                             b.decouple();
-                            cout << "OLD RESPONSE IS:" << response.toString() << "\n";
                             new_response.setData( qr , true );
-                            cout << "NEW RESPONSE IS:" << new_response.toString() << "\n"; 
                         }
                         
                         else{
                             new_response = response;
-                            cout << "RESPONSE IS:" << new_response.toString() << "\n";
                         }
                     }
 
@@ -299,10 +306,16 @@ inline void setupSignals() {}
 #endif
 
 void helpExit() {
-    cout << "usage mongobridge --port <port> --dest <destUri> [ --delay <ms> ]" << endl;
+    cout << "usage mongobridge --port <port> --dest <destUri> [ --delay <ms> --mongos <list>]"
+        << endl;
     cout << "    port: port to listen for mongo messages" << endl;
     cout << "    destUri: uri of remote mongod instance" << endl;
     cout << "    ms: transfer delay in milliseconds (default = 0)" << endl;
+    cout << "    list: list of uri substitutions; ports in a pair are separated by = and";
+    cout << " pairs are comma separated. Substutions are purely textual, so different port names";
+    cout << " that refer to the same port are not considered equivalent" << endl;
+    cout << "          (e.g. port1=port2,port3=port4 subtitutes";
+    cout << " port1 with port2, and port3 with port 4)" << endl;
     ::_exit( -1 );
 }
 
@@ -313,7 +326,6 @@ void check( bool b ) {
 
 int main( int argc, char **argv ) {
     static StaticObserver staticObserver;
-    cout << "THIS IS A TEST\n";
     setupSignals();
 
     check( argc == 5 || argc == 7 );
@@ -339,8 +351,6 @@ int main( int argc, char **argv ) {
     }
     
     //Parse the mongos argument
-    //cout << "GOING INTO PARSING MONGOS\n";
-    //cout << "Alias list is" << alias_list << "\n";
     while (isMongos) {
         size_t pos = alias_list.find('=');
         if (pos == string::npos){
@@ -350,8 +360,6 @@ int main( int argc, char **argv ) {
         size_t pos2 = alias_list.find(',');
         string original_host = alias_list.substr(0, pos);
         string new_host = alias_list.substr(pos+1, pos2 - pos - 1);
-        cout << "ORI HOST:" << original_host << "\n";
-        cout << "NEW HOST:" << new_host << "\n";
         alias[original_host]=new_host;
         if (pos2 == string::npos)
             break;
