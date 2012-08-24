@@ -67,37 +67,35 @@ public:
                         exhaust = q.queryOptions & QueryOption_Exhaust;
                     }
                     Message response;
-                    Message new_response;
+                    Message newResponse;
                     dest.port().call(m, response);
                     if (response.empty()) 
                         cleanup(0);
-                    mongo::QueryResult* r = (mongo::QueryResult*)response.singleData();
-                    mongo::BSONObj o(r->data());
+                    mongo::QueryResult* qrpResponse = (mongo::QueryResult*)response.singleData();
                     if (m.operation() == dbQuery){
                         if (subst){
                             DbMessage d(m);
-                            QueryMessage q(d);
-                            string s = q.query.firstElement().fieldName();
-                
+                            QueryMessage qmResponse(d);
+                            string s = qmResponse.query.firstElement().fieldName();
                             if (s == "isMaster")
-                                replace_isMaster(r, &new_response);
+                                replaceIsMaster(qrpResponse, &newResponse);
                             
                             else if (s == "replSetGetStatus")
-                                replace_replSetGetStatus(r, &new_response);
+                                replaceReplSetGetStatus(qrpResponse, &newResponse);
                         }
                         
                         else
-                            new_response = response;
+                            newResponse = response;
                     }
 
-                    mp_.reply(m, new_response, oldId);
+                    mp_.reply(m, newResponse, oldId);
                     while (exhaust) {
-                        MsgData *header = new_response.header();
+                        MsgData *header = newResponse.header();
                         QueryResult *qr = (QueryResult *) header;
                         if (qr->cursorId) {
-                            new_response.reset();
-                            dest.port().recv(new_response);
-                            mp_.reply(m, new_response); // m argument is ignored anyway
+                            newResponse.reset();
+                            dest.port().recv(newResponse);
+                            mp_.reply(m, newResponse); // m argument is ignored anyway
                         }
                         else {
                             exhaust = false;
@@ -114,148 +112,144 @@ public:
         }
     }
     
-    void replace_isMaster(QueryResult* r, Message* new_response) const {
-        mongo::BSONObj o(r->data());
+    void replaceIsMaster(QueryResult* qr, Message* newResponse) const {
+        mongo::BSONObj data(qr->data());
         BSONObjBuilder newQuery;
         // Copy all elements of the original query object, changing some fields
-        BSONObjIterator it(o);
-        while (it.more()) {
-            BSONElement e = it.next();
+        BSONObjIterator fieldIterator(data);
+        while (fieldIterator.more()) {
+            BSONElement field = fieldIterator.next();
             
-            if (mongoutils::str::equals(e.fieldName(), "hosts")){
-                BSONArrayBuilder newElement (newQuery.subarrayStart("hosts"));
-                BSONObjIterator it2(e.embeddedObject());
-                //iterates thru hosts
-                while (it2.more()){
-                    BSONElement e2 = it2.next();
-                    //parse text
-                    string s = e2.str();
-                    if (alias.find(s) != alias.end()){ //matches dic
-                        s = alias[s];
+            if (mongoutils::str::equals(field.fieldName(), "hosts")){
+                BSONArrayBuilder newHost (newQuery.subarrayStart("hosts"));
+                BSONObjIterator hostNameIterator(field.embeddedObject());
+                while (hostNameIterator.more()){
+                    BSONElement hostName = hostNameIterator.next();
+                    string host = hostName.str();
+                    if (alias.find(host) != alias.end()){
+                        host = alias[host];
                     }
-                    newElement.append(s);
+                    newHost.append(host);
                 }
-                newElement.done();
+                newHost.done();
             }
             
-            else if (mongoutils::str::equals(e.fieldName(), "arbiters")){
-                BSONArrayBuilder newElement (newQuery.subarrayStart("arbiters"));
-                BSONObjIterator it2 = BSONArray (e.embeddedObject());
-                while (it2.more()){
-                    BSONElement e2 = it2.next();
-                    string s = e2.str();
-                    if (alias.find(s) != alias.end())
-                        s = alias[s];
-                    newElement.append(s);
+            else if (mongoutils::str::equals(field.fieldName(), "arbiters")){
+                BSONArrayBuilder newArbiter (newQuery.subarrayStart("arbiters"));
+                BSONObjIterator arbiterIterator = BSONArray (field.embeddedObject());
+                while (arbiterIterator.more()){
+                    BSONElement arbiter = arbiterIterator.next();
+                    string arb = arbiter.str();
+                    if (alias.find(arb) != alias.end())
+                        arb = alias[arb];
+                    newArbiter.append(arb);
                 }
-                newElement.done();
+                newArbiter.done();
             }
             
-            else if (mongoutils::str::equals(e.fieldName(), "passives")){
-                BSONArrayBuilder newElement (newQuery.subarrayStart("passives"));
-                BSONObjIterator it2 = BSONArray (e.embeddedObject());
-                while (it2.more()){
-                    BSONElement e2 = it2.next();
-                    string s = e2.str();
-                    if (alias.find(s) != alias.end())
-                        s = alias[s];
-                    newElement.append(s);
+            else if (mongoutils::str::equals(field.fieldName(), "passives")){
+                BSONArrayBuilder newPassive (newQuery.subarrayStart("passives"));
+                BSONObjIterator passiveIterator = BSONArray (field.embeddedObject());
+                while (passiveIterator.more()){
+                    BSONElement passive = passiveIterator.next();
+                    string psv = passive.str();
+                    if (alias.find(psv) != alias.end())
+                        psv = alias[psv];
+                    newPassive.append(psv);
                 }
-                newElement.done();
+                newPassive.done();
             }
             
-            else if (mongoutils::str::equals(e.fieldName(), "me")){
-                string s = e.str();
-                if (alias.find(s) != alias.end())
-                    s = alias[s];
-                newQuery.append(e.fieldName(), s);
+            else if (mongoutils::str::equals(field.fieldName(), "me")){
+                string me = field.str();
+                if (alias.find(me) != alias.end())
+                    me = alias[me];
+                newQuery.append(field.fieldName(), me);
             }
             
-            else if (mongoutils::str::equals(e.fieldName(), "primary")){
-                string s = e.str();
-                if (alias.find(s) != alias.end())
-                    s = alias[s];
-                newQuery.append(e.fieldName(), s);
+            else if (mongoutils::str::equals(field.fieldName(), "primary")){
+                string primary = field.str();
+                if (alias.find(primary) != alias.end())
+                    primary = alias[primary];
+                newQuery.append(field.fieldName(), primary);
             }
             
             else
-                newQuery.append(e);
+                newQuery.append(field);
         }
-        BSONObj o2 = newQuery.obj();
+        BSONObj newData = newQuery.obj();
         //now we need to copy back to the QueryResult
         BufBuilder b(32768);
         b.skip(sizeof(QueryResult));
         {
-            b.appendBuf(o2.objdata() , o2.objsize());
+            b.appendBuf(newData.objdata() , newData.objsize());
         }
-        QueryResult *qr = (QueryResult*)b.buf();
-        qr->_resultFlags() = r->_resultFlags();
-        qr->len = b.len();
-        qr->setOperation(opReply);
-        qr->cursorId = r->cursorId;
-        qr->startingFrom = r->startingFrom;
-        qr->nReturned = r->nReturned;
+        QueryResult *newQr = (QueryResult*)b.buf();
+        newQr->_resultFlags() = qr->_resultFlags();
+        newQr->len = b.len();
+        newQr->setOperation(opReply);
+        newQr->cursorId = qr->cursorId;
+        newQr->startingFrom = qr->startingFrom;
+        newQr->nReturned = qr->nReturned;
         b.decouple();
-        new_response->setData(qr , true);
+        newResponse->setData(newQr , true);
     }
     
-    void replace_replSetGetStatus(QueryResult* r, Message* new_response) const {
-        mongo::BSONObj o(r->data());
+    void replaceReplSetGetStatus(QueryResult* qr, Message* newResponse) const {
+        mongo::BSONObj data(qr->data());
         BSONObjBuilder newQuery;
-        BSONObjIterator it(o);
-        while (it.more()) {
-            BSONElement e = it.next();
+        BSONObjIterator fieldIterator(data);
+        while (fieldIterator.more()) {
+            BSONElement field = fieldIterator.next();
             
-            if (mongoutils::str::equals(e.fieldName(), "members")){
+            if (mongoutils::str::equals(field.fieldName(), "members")){
                 
-                BSONArrayBuilder newElement (newQuery.subarrayStart("members"));
-                BSONObjIterator it2 = BSONArray (e.embeddedObject());
-                //this iterates through the members
+                BSONArrayBuilder newMemberArray (newQuery.subarrayStart("members"));
+                BSONObjIterator memberIterator = BSONArray (field.embeddedObject());
                 
-                while (it2.more()){
-                    BSONElement e2 = it2.next();
-                    //this is a member, a bson object
+                while (memberIterator.more()){
+                    BSONElement member = memberIterator.next();
                     
-                    BSONObjBuilder newElement2; // will hold the new member
-                    BSONObjIterator it3 = BSONObj (e2.embeddedObject());
+                    BSONObjBuilder newMemberField; 
+                    BSONObjIterator memberFieldIterator = BSONObj (member.embeddedObject());
                     
-                    while (it3.more()){
-                        BSONElement e3 = it3.next(); //field of a member
-                        if (str::equals(e3.fieldName(), "name")){
-                            string s = e3.str();
+                    while (memberFieldIterator.more()){
+                        BSONElement memberField = memberFieldIterator.next();
+                        if (str::equals(memberField.fieldName(), "name")){
+                            string s = memberField.str();
                             if (alias.find(s) != alias.end())
                                 s = alias[s];
-                            newElement2.append(e3.fieldName(), s);
+                            newMemberField.append(memberField.fieldName(), s);
                         }
                         else
-                            newElement2.append(e3);
+                            newMemberField.append(memberField);
                     }
                     
-                    newElement.append(newElement2.obj());
+                    newMemberArray.append(newMemberField.obj());
                     
                 }
-                newElement.done();
+                newMemberArray.done();
             }
             else
-                newQuery.append(e);
+                newQuery.append(field);
         }
         
-        BSONObj o2 = newQuery.obj();
+        BSONObj newData = newQuery.obj();
         //now we need to copy back to the QueryResult
         BufBuilder b(32768);
         b.skip(sizeof(QueryResult));
         {
-            b.appendBuf(o2.objdata() , o2.objsize());
+            b.appendBuf(newData.objdata() , newData.objsize());
         }
-        QueryResult *qr = (QueryResult*)b.buf();
-        qr->_resultFlags() = r->_resultFlags();
-        qr->len = b.len();
-        qr->setOperation(opReply);
-        qr->cursorId = r->cursorId;
-        qr->startingFrom = r->startingFrom;
-        qr->nReturned = r->nReturned;
+        QueryResult *newQr = (QueryResult*)b.buf();
+        newQr->_resultFlags() = qr->_resultFlags();
+        newQr->len = b.len();
+        newQr->setOperation(opReply);
+        newQr->cursorId = qr->cursorId;
+        newQr->startingFrom = qr->startingFrom;
+        newQr->nReturned = qr->nReturned;
         b.decouple();
-        new_response->setData(qr , true);
+        newResponse->setData(newQr , true);
     }
 
 private:
@@ -330,7 +324,7 @@ int main(int argc, char **argv) {
     static StaticObserver staticObserver;
     setupSignals();
     check(argc == 5 || argc == 7 || argc == 9);
-    string alias_list;
+    string aliasList;
     for(int i = 1; i < argc; ++i) {
         check(i % 2 != 0);
         if (strcmp(argv[i], "--port") == 0) {
@@ -344,7 +338,7 @@ int main(int argc, char **argv) {
         }
         else if (strcmp(argv[i], "--subst") == 0) {
             subst = true;
-            alias_list = argv[++i];
+            aliasList = argv[++i];
         }
         else {
             check(false);
@@ -354,7 +348,7 @@ int main(int argc, char **argv) {
     std::vector<std::string> list;
 
     if (subst) {
-        splitStringDelim(alias_list, &list, ',');
+        splitStringDelim(aliasList, &list, ',');
         for (size_t i = 0; i < list.size(); i++){
             std::vector<std::string> list2;
             splitStringDelim(list[i], &list2, '=');
