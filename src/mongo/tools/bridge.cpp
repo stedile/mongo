@@ -72,8 +72,8 @@ public:
                     if (response.empty()) 
                         cleanup(0);
                     mongo::QueryResult* qrpResponse = (mongo::QueryResult*)response.singleData();
-                    if (m.operation() == dbQuery){
-                        if (subst){
+                    if (m.operation() == dbQuery) {
+                        if (subst) {
                             DbMessage d(m);
                             QueryMessage qmResponse(d);
                             string s = qmResponse.query.firstElement().fieldName();
@@ -120,13 +120,13 @@ public:
         while (fieldIterator.more()) {
             BSONElement field = fieldIterator.next();
             
-            if (mongoutils::str::equals(field.fieldName(), "hosts")){
+            if (mongoutils::str::equals(field.fieldName(), "hosts")) {
                 BSONArrayBuilder newHost (newQuery.subarrayStart("hosts"));
-                BSONObjIterator hostNameIterator(field.embeddedObject());
-                while (hostNameIterator.more()){
+                BSONObjIterator hostNameIterator (field.embeddedObject());
+                while (hostNameIterator.more()) {
                     BSONElement hostName = hostNameIterator.next();
                     string host = hostName.str();
-                    if (alias.find(host) != alias.end()){
+                    if (alias.find(host) != alias.end()) {
                         host = alias[host];
                     }
                     newHost.append(host);
@@ -134,10 +134,10 @@ public:
                 newHost.done();
             }
             
-            else if (mongoutils::str::equals(field.fieldName(), "arbiters")){
+            else if (mongoutils::str::equals(field.fieldName(), "arbiters")) {
                 BSONArrayBuilder newArbiter (newQuery.subarrayStart("arbiters"));
-                BSONObjIterator arbiterIterator = BSONArray (field.embeddedObject());
-                while (arbiterIterator.more()){
+                BSONObjIterator arbiterIterator (field.embeddedObject());
+                while (arbiterIterator.more()) {
                     BSONElement arbiter = arbiterIterator.next();
                     string arb = arbiter.str();
                     if (alias.find(arb) != alias.end())
@@ -147,10 +147,10 @@ public:
                 newArbiter.done();
             }
             
-            else if (mongoutils::str::equals(field.fieldName(), "passives")){
+            else if (mongoutils::str::equals(field.fieldName(), "passives")) {
                 BSONArrayBuilder newPassive (newQuery.subarrayStart("passives"));
-                BSONObjIterator passiveIterator = BSONArray (field.embeddedObject());
-                while (passiveIterator.more()){
+                BSONObjIterator passiveIterator (field.embeddedObject());
+                while (passiveIterator.more()) {
                     BSONElement passive = passiveIterator.next();
                     string psv = passive.str();
                     if (alias.find(psv) != alias.end())
@@ -160,14 +160,14 @@ public:
                 newPassive.done();
             }
             
-            else if (mongoutils::str::equals(field.fieldName(), "me")){
+            else if (mongoutils::str::equals(field.fieldName(), "me")) {
                 string me = field.str();
                 if (alias.find(me) != alias.end())
                     me = alias[me];
                 newQuery.append(field.fieldName(), me);
             }
             
-            else if (mongoutils::str::equals(field.fieldName(), "primary")){
+            else if (mongoutils::str::equals(field.fieldName(), "primary")) {
                 string primary = field.str();
                 if (alias.find(primary) != alias.end())
                     primary = alias[primary];
@@ -202,20 +202,20 @@ public:
         while (fieldIterator.more()) {
             BSONElement field = fieldIterator.next();
             
-            if (mongoutils::str::equals(field.fieldName(), "members")){
+            if (mongoutils::str::equals(field.fieldName(), "members")) {
                 
                 BSONArrayBuilder newMemberArray (newQuery.subarrayStart("members"));
-                BSONObjIterator memberIterator = BSONArray (field.embeddedObject());
+                BSONObjIterator memberIterator (field.embeddedObject());
                 
-                while (memberIterator.more()){
+                while (memberIterator.more()) {
                     BSONElement member = memberIterator.next();
                     
                     BSONObjBuilder newMemberField; 
                     BSONObjIterator memberFieldIterator = BSONObj (member.embeddedObject());
                     
-                    while (memberFieldIterator.more()){
+                    while (memberFieldIterator.more()) {
                         BSONElement memberField = memberFieldIterator.next();
-                        if (str::equals(memberField.fieldName(), "name")){
+                        if (str::equals(memberField.fieldName(), "name")) {
                             string s = memberField.str();
                             if (alias.find(s) != alias.end())
                                 s = alias[s];
@@ -344,18 +344,19 @@ int main(int argc, char **argv) {
             check(false);
         }
     }
-    //Parse the mongos argument
+    //Parse the substitution argument
     std::vector<std::string> list;
 
     if (subst) {
         splitStringDelim(aliasList, &list, ',');
-        for (size_t i = 0; i < list.size(); i++){
+        for (size_t i = 0; i < list.size(); i++) {
             std::vector<std::string> list2;
             splitStringDelim(list[i], &list2, '=');
-            if (list2.size() != 2){
-                cout << list2.size();
-                cout << "Format for subst argument is off. Use --help for more info on correct format\n";
-                return 0;
+            if (list2.size() != 2) {
+                cerr << list[i];
+                cerr << " is not a valid format for subst argument.";
+                cerr << "Use --help for more info on correct format\n";
+                return -1;
             }
             alias[list2[0]] = list2[1];
         }
