@@ -59,7 +59,8 @@ public:
                 sleepmillis(delay);
                 
                 int oldId = m.header()->id;
-                if (m.operation() == dbQuery || m.operation() == dbMsg || m.operation() == dbGetMore) {
+                if (m.operation() == dbQuery || m.operation() == dbMsg || m.operation() == dbGetMore)
+                {
                     bool exhaust = false;
                     if (m.operation() == dbQuery) {
                         DbMessage d(m);
@@ -77,11 +78,14 @@ public:
                             DbMessage d(m);
                             QueryMessage qmResponse(d);
                             string s = qmResponse.query.firstElement().fieldName();
-                            if (s == "isMaster")
+                            if (s == "isMaster" || s == "ismaster")
                                 replaceIsMaster(qrpResponse, &newResponse);
                             
                             else if (s == "replSetGetStatus")
                                 replaceReplSetGetStatus(qrpResponse, &newResponse);
+                            
+                            else
+                                newResponse = response;
                         }
                         
                         else
@@ -92,6 +96,7 @@ public:
                     while (exhaust) {
                         MsgData *header = newResponse.header();
                         QueryResult *qr = (QueryResult *) header;
+
                         if (qr->cursorId) {
                             newResponse.reset();
                             dest.port().recv(newResponse);
