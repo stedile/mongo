@@ -55,4 +55,3 @@ for (i = 0; i < 1; i++){
 
 assert.eq(count, 0);
 assert.eq(count2, 0);
-print("TEST DONE");

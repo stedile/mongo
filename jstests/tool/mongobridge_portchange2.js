@@ -2,10 +2,6 @@ BRIDGE_PORT = 29001;
 START_PORT = 31100;
 SECONDARY_PORT = 31101;
 ARBITER = 31102;
-SUBST_HOST_0 = "localhost:31105";
-SUBST_HOST_1 = "localhost:31106";
-SUBST_HOST_2 = "localhost:31107";
-
 
 
 r = new ReplSetTest({name : "addshard4", nodes : 3, startPort : START_PORT});
@@ -19,6 +15,11 @@ r.initiate(config);
 r.awaitReplication();
 db = r.getPrimary().getDB("test");
 host = rs.status().members[0].name.split(':')[0];
+
+SUBST_HOST_0 = host + ":31105";
+SUBST_HOST_1 = host + ":31106";
+SUBST_HOST_2 = host + "31107";
+
 str = host + ":" + START_PORT + "=" + SUBST_HOST_0 + ",";
 str += host + ":" + SECONDARY_PORT + "=" + SUBST_HOST_1 + ",";
 str += host + ":" + ARBITER + "=" + SUBST_HOST_2;
@@ -27,7 +28,7 @@ str += host + ":" + ARBITER + "=" + SUBST_HOST_2;
 // and isMaster (primary, me, hosts, passive, arbiter)
 startMongoProgram("mongobridge", "--port", BRIDGE_PORT, "--dest", host + ":" + SECONDARY_PORT,
 		  "--substitute", str);
-db = new Mongo("localhost:" + BRIDGE_PORT).getDB("test");
+db = new Mongo(host + ":" + BRIDGE_PORT).getDB("test");
 count = 0;
 count2 = 0;
 count3 = 0;
@@ -60,3 +61,5 @@ for (i = 0; i < 1; i++){
 assert.eq(count, 1);
 assert.eq(count2, 1);
 assert.eq(count3, 1);
+
+print ("DONE");
