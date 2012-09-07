@@ -32,7 +32,7 @@ using namespace std;
 
 int port = 0;
 int delay = 0;
-bool subst = false;
+bool substitute = false;
 string destUri;
 void cleanup(int sig);
 std::map<std::string, string> alias; //stores map of host alias
@@ -72,25 +72,23 @@ public:
           dest.port().call(m, response);
           if (response.empty())
             cleanup(0);
-          mongo::QueryResult* qrpResponse = (mongo::QueryResult*)response.singleData();
-          if (m.operation() == dbQuery) {
-            if (subst) {
-              DbMessage d(m);
-              QueryMessage qmResponse(d);
-              string s = qmResponse.query.firstElement().fieldName();
-              if (s == "isMaster" || s == "ismaster")
-                replaceIsMaster(qrpResponse, &newResponse);
-              
-              else if (s == "replSetGetStatus")
-                replaceReplSetGetStatus(qrpResponse, &newResponse);
-              
-              else
-                newResponse = response;
-            }
+          if (m.operation() == dbQuery && substitute) {
+            mongo::QueryResult* qrpResponse = (mongo::QueryResult*)response.singleData();
+            DbMessage d(m);
+            QueryMessage qmResponse(d);
+            string field = qmResponse.query.firstElement().fieldName();
+            if (field == "isMaster" || field == "ismaster")
+              replaceIsMaster(qrpResponse, &newResponse);
+            
+            else if (field == "replSetGetStatus")
+              replaceReplSetGetStatus(qrpResponse, &newResponse);
             
             else
               newResponse = response;
           }
+          
+          else
+            newResponse = response;
           
           mp_.reply(m, newResponse, oldId);
           while (exhaust) {
@@ -131,7 +129,7 @@ public:
         while (hostNameIterator.more()) {
           BSONElement hostName = hostNameIterator.next();
           string host = hostName.str();
-          if (alias.find(host) != alias.end()) {
+          if (alias.count(host)) {
             host = alias[host];
           }
           newHost.append(host);
@@ -145,7 +143,7 @@ public:
         while (arbiterIterator.more()) {
           BSONElement arbiter = arbiterIterator.next();
           string arb = arbiter.str();
-          if (alias.find(arb) != alias.end())
+          if (alias.count(arb))
             arb = alias[arb];
           newArbiter.append(arb);
         }
@@ -158,7 +156,7 @@ public:
         while (passiveIterator.more()) {
           BSONElement passive = passiveIterator.next();
           string psv = passive.str();
-          if (alias.find(psv) != alias.end())
+          if (alias.count(psv))
             psv = alias[psv];
           newPassive.append(psv);
         }
@@ -167,14 +165,14 @@ public:
       
       else if (mongoutils::str::equals(field.fieldName(), "me")) {
         string me = field.str();
-        if (alias.find(me) != alias.end())
+        if (alias.count(me))
           me = alias[me];
         newQuery.append(field.fieldName(), me);
       }
       
       else if (mongoutils::str::equals(field.fieldName(), "primary")) {
         string primary = field.str();
-        if (alias.find(primary) != alias.end())
+        if (alias.count(primary))
           primary = alias[primary];
         newQuery.append(field.fieldName(), primary);
       }
@@ -221,13 +219,14 @@ public:
           while (memberFieldIterator.more()) {
             BSONElement memberField = memberFieldIterator.next();
             if (str::equals(memberField.fieldName(), "name")) {
-              string s = memberField.str();
-              if (alias.find(s) != alias.end())
-                s = alias[s];
-              newMemberField.append(memberField.fieldName(), s);
+              string name = memberField.str();
+              if (alias.count(name))
+                name = alias[name];
+              newMemberField.append(memberField.fieldName(), name);
             }
-            else
+            else {
               newMemberField.append(memberField);
+            }
           }
           
           newMemberArray.append(newMemberField.obj());
@@ -241,7 +240,7 @@ public:
     
     BSONObj newData = newQuery.obj();
     //now we need to copy back to the QueryResult
-    BufBuilder b(32768);
+    BufBuilder b(32768); //max query result size
     b.skip(sizeof(QueryResult));
     {
       b.appendBuf(newData.objdata() , newData.objsize());
@@ -277,7 +276,6 @@ public:
 
 auto_ptr< MyListener > listener;
 
-
 void cleanup(int sig) {
   ListeningSockets::get()->closeAll();
   for (set<MessagingPort*>::iterator i = ports.begin(); i != ports.end(); i++)
@@ -306,13 +304,13 @@ inline void setupSignals() {}
 #endif
 
 void helpExit() {
-  cout << "usage mongobridge --port <port> --dest <destUri> [--delay <ms> --subst <list>]"
-  << endl;
+  cout << "usage mongobridge --port <port> --dest <destUri>"
+  << "[--delay <ms> --substitute <subtituionList>]" << endl;
   cout << "    port: port to listen for mongo messages" << endl;
   cout << "    destUri: uri of remote mongod instance" << endl;
   cout << "    ms: transfer delay in milliseconds (default = 0)" << endl;
-  cout << "    list: list of uri substitutions; hosts in a pair are separated by = and";
-  cout << " pairs are comma separated. Substitutes occurences of the first host in a pair";
+  cout << "    substitionlist: list of uri substitutions; hosts in a pair are separated by = and";
+  cout << " pairs are comma separated. Substitutes occurrences of the first host in a pair";
   cout << " with the second one in replies to replSetGetStatus and isMaster through the bridge.";
   cout << endl;
   cout << "          (e.g. host1=host2,host3=host4 subtitutes";
@@ -341,8 +339,8 @@ int main(int argc, char **argv) {
     else if (strcmp(argv[i], "--delay") == 0) {
       delay = strtol(argv[++i], 0, 10);
     }
-    else if (strcmp(argv[i], "--subst") == 0) {
-      subst = true;
+    else if (strcmp(argv[i], "--substitute") == 0) {
+      substitute = true;
       aliasList = argv[++i];
     }
     else {
@@ -352,14 +350,14 @@ int main(int argc, char **argv) {
   //Parse the substitution argument
   std::vector<std::string> list;
   
-  if (subst) {
+  if ( substitute) {
     splitStringDelim(aliasList, &list, ',');
     for (size_t i = 0; i < list.size(); i++) {
       std::vector<std::string> list2;
       splitStringDelim(list[i], &list2, '=');
       if (list2.size() != 2) {
         cerr << list[i];
-        cerr << " is not a valid format for subst argument.";
+        cerr << " is not a valid format for  substitute argument.";
         cerr << "Use --help for more info on correct format\n";
         return -1;
       }
